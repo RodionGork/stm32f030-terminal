@@ -9,6 +9,10 @@
 #define GPIOB_BASE 0x48000400
 #define GPIOF_BASE 0x48001400
 
+#define EXTI_BASE 0x40010400
+#define SYSCFG_BASE 0x40010000
+#define NVIC_BASE 0xE000E100
+
 #define USART_BASE 0x40013800
 #define ADC_BASE 0x40012400
 
@@ -17,9 +21,19 @@
 #define RCC_AHB1ENR 0x1C
 
 #define GPIO_MODER 0x00
+#define GPIO_IDR 0x10
 #define GPIO_BSRR 0x18
 #define GPIO_AFRL 0x20
 #define GPIO_AFRH 0x24
+
+#define EXTI_IMR 0x00
+#define EXTI_RTSR 0x08
+#define EXTI_FTSR 0x0C
+#define EXTI_PR 0x14
+
+#define SYSCFG_EXTICR1 0x08
+
+#define NVIC_ISER 0x00
 
 #define ADC_ISR 0x00
 #define ADC_CR 0x08

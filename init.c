@@ -1,4 +1,5 @@
 void resetHandler(void);
+void exti01Handler(void);
 void main(void);
 
 #define STACK_TOP 0x20001000
@@ -11,8 +12,8 @@ extern unsigned char  BSS_END;
 extern unsigned char  BSS_END;
 
 const void * Vectors[] __attribute__((section(".vectors"))) ={
-	(void *) STACK_TOP,
-	resetHandler,
+	(void *) STACK_TOP, resetHandler, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, exti01Handler
 };
 
 void resetHandler(void) {
