@@ -40,7 +40,7 @@ char scans2[] = {
 unsigned char buf[KBD_BUF_SIZE];
 char bhead, btail;
 char cx, cy;
-char extKey, release, shift;
+char extKey, release, shift, ctrl;
 int cur;
 char curCnt;
 
@@ -62,16 +62,28 @@ int intDiv(int a, int b) {
     return res;
 }
 
+void irqEnable(unsigned char n) {
+    REG_L(NVIC_BASE, NVIC_ISER + (n / 32) * 4) |= (1 << (n % 32));
+}
+
+void enableInterrupts(void) {
+    __asm("cpsie i");
+}
+
 void uartEnable(int divisor) {
     REG_L(GPIOA_BASE, GPIO_MODER) &= ~(3 << (9 * 2));
     REG_L(GPIOA_BASE, GPIO_MODER) |= (2 << (9 * 2));
     REG_L(GPIOA_BASE, GPIO_AFRH) &= ~(0xF << ((9 - 8) * 4));
     REG_L(GPIOA_BASE, GPIO_AFRH) |= (1 << ((9 - 8) * 4));
+    REG_L(GPIOA_BASE, GPIO_MODER) &= ~(3 << (10 * 2));
+    REG_L(GPIOA_BASE, GPIO_MODER) |= (2 << (10 * 2));
+    REG_L(GPIOA_BASE, GPIO_AFRH) &= ~(0xF << ((10 - 8) * 4));
+    REG_L(GPIOA_BASE, GPIO_AFRH) |= (1 << ((10 - 8) * 4));
     REG_L(RCC_BASE, RCC_AHB2ENR) |= (1 << 14);
     REG_L(USART_BASE, USART_BRR) = divisor;
     REG_L(USART_BASE, USART_CR1) |= 1;
-    REG_L(USART_BASE, USART_CR1) |= (1 << 3);
-    
+    REG_L(USART_BASE, USART_CR1) |= (1 << 3) | (1 << 2) | (1 << 5);
+    irqEnable(27);
 }
 
 void send(int c) {
@@ -108,21 +120,12 @@ void sendDec(int x) {
     }
 }
 
-void irqEnable(unsigned char n) {
-    REG_L(NVIC_BASE, NVIC_ISER + (n / 32) * 4) |= (1 << (n % 32));
-}
-
-void enableInterrupts(void) {
-    __asm("cpsie i");
-}
-
 void setupExtInterrupt(void) {
     REG_L(RCC_BASE, RCC_AHB2ENR) |= (1 << 0); // syscfg en
     REG_L(SYSCFG_BASE, SYSCFG_EXTICR1) = (5 << 0);
     REG_L(EXTI_BASE, EXTI_IMR) |= (1 << 0);
     REG_L(EXTI_BASE, EXTI_FTSR) |= (1 << 0);
     irqEnable(5);
-    enableInterrupts();
 }
 
 void exti01Handler(void) {
@@ -142,23 +145,37 @@ void exti01Handler(void) {
         } else {
             if ((c == 0x12 || c == 0x59) && !extKey) {
                 shift = !release;
+            } else if (c == 0x14) {
+                ctrl = !release;
             } else if (c < 0x70) {
-                if (!shift) {
+                if (ctrl) {
+                    c = scans2[c];
+                    if (c >= 'A' && c <= 'Z') {
+                        c = c - 'A' + 1;
+                    } else {
+                        c = 0;
+                    }
+                } else if (!shift) {
                     c = scans[c];
                 } else {
                     c = scans2[c];
                 }
                 if (c && !extKey && !release) {
-                    buf[bhead] = c;
-                    c = (bhead + 1) % KBD_BUF_SIZE;
-                    if (c != btail) {
-                        bhead = c;
-                    }
+                    send(c);
                 }
             }
             release = 0;
             extKey = 0;
         }
+    }
+}
+
+void uart1Handler(void) {
+    char c;
+    buf[bhead] = (unsigned char) REG_L(USART_BASE, USART_RDR);
+    c = (bhead + 1) % KBD_BUF_SIZE;
+    if (c != btail) {
+        bhead = c;
     }
 }
 
@@ -255,12 +272,23 @@ void scrollLine(void) {
     adjustCursor(0, DISP_H - 1);
 }
 
-void newLine(void) {
+void wrapLine(void) {
     if (cy >= DISP_H - 1) {
         scrollLine();
     } else {
         adjustCursor(0, cy + 1);
     }
+}
+
+void clearScreen(void) {
+    for (cy = 0; cy < DISP_H; cy++) {
+        adjustCursor(0, cy);
+        for (cx = 0; cx < DISP_W; cx++) {
+            disp[cy * DISP_W + cx] = ' ';
+            lcdWrite(1, ' ');
+        }
+    }
+    adjustCursor(0, 0);
 }
 
 void print(unsigned char c) {
@@ -269,15 +297,23 @@ void print(unsigned char c) {
         lcdWrite(1, c);
         cx += 1;
         if (cx >= DISP_W) {
-            newLine();
+            wrapLine();
         }
     }
     if (c == '\b' && cx > 0) {
         adjustCursor(cx - 1, cy);
-        lcdWrite(1, ' ');
-        adjustCursor(cx, cy);
     } else if (c == '\r') {
-        newLine();
+        adjustCursor(0, cy);
+    } else if (c == '\n') {
+        if (cy < DISP_H - 1) {
+            adjustCursor(cx, cy + 1);
+        } else {
+            c = cx;
+            scrollLine();
+            adjustCursor(c, DISP_H - 1);
+        }
+    } else if (c == '\f') {
+        clearScreen();
     }
 }
 
@@ -288,6 +324,7 @@ int main(void) {
     uartEnable(SYS_CLK / 9600);
     
     setupExtInterrupt();
+    enableInterrupts();
     
     curCnt = 0;
     bhead = 0;
@@ -295,11 +332,11 @@ int main(void) {
     extKey = 0;
     release = 0;
     shift = 0;
+    ctrl = 0;
     lcdDelay(1000);
     lcdInit();
     while(1) {
         if (btail != bhead) {
-            send(buf[btail]);
             print(buf[btail]);
             btail = (btail + 1) % KBD_BUF_SIZE;
         }
