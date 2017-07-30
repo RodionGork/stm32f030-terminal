@@ -201,7 +201,7 @@ void lcdRS(char state) {
 }
 
 void lcdDelay(int delay) {
-    delay *= 100;
+    delay *= 100 + 3;
     while (delay-- > 0) {
         __asm("nop");
     }
@@ -209,15 +209,15 @@ void lcdDelay(int delay) {
 
 void lcdHalf(char half) {
     char i;
-    lcdDelay(1);
+    lcdDelay(0);
     lcdE(1);
     for (i = 0; i < 4; i++) {
         REG_L(GPIOA_BASE, GPIO_BSRR) |= 1 << (LCD_DAT_LINE + i + ((half & 1) ? 0 : 16));
         half >>= 1;
     }
-    lcdDelay(1);
+    lcdDelay(0);
     lcdE(0);
-    lcdDelay(1);
+    lcdDelay(0);
 }
 
 void lcdWrite(char rs, unsigned char value) {
