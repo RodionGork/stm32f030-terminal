@@ -1,7 +1,7 @@
 #include "stm32f030.h"
 
 #define SYS_CLK 8000000
-#define KBD_BUF_SIZE 16
+#define KBD_BUF_SIZE 120
 #define DISP_H 4
 #define DISP_W 20
 
@@ -173,7 +173,10 @@ void exti01Handler(void) {
 void uart1Handler(void) {
     char c;
     buf[bhead] = (unsigned char) REG_L(USART_BASE, USART_RDR);
-    c = (bhead + 1) % KBD_BUF_SIZE;
+    c = bhead + 1;
+    if (c >= KBD_BUF_SIZE) {
+        c -= KBD_BUF_SIZE;
+    }
     if (c != btail) {
         bhead = c;
     }
@@ -321,7 +324,7 @@ int main(void) {
     lcdDelay(1000);
     setupPorts();
     
-    uartEnable(SYS_CLK / 9600);
+    uartEnable(SYS_CLK / 115200);
     
     setupExtInterrupt();
     enableInterrupts();
@@ -338,8 +341,11 @@ int main(void) {
     while(1) {
         if (btail != bhead) {
             print(buf[btail]);
-            btail = (btail + 1) % KBD_BUF_SIZE;
+            btail += 1;
+            if (btail >= KBD_BUF_SIZE) {
+                btail -= KBD_BUF_SIZE;
+            }
         }
-    }    
+    }
 }
 
